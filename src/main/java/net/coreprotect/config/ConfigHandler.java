@@ -11,7 +11,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
@@ -29,6 +28,7 @@ import net.coreprotect.consumer.Queue;
 import net.coreprotect.database.Database;
 import net.coreprotect.database.statement.UserStatement;
 import net.coreprotect.language.Phrase;
+import net.coreprotect.listener.ListenerHandler;
 import net.coreprotect.model.BlockGroup;
 import net.coreprotect.paper.PaperAdapter;
 import net.coreprotect.patch.Patch;
@@ -42,7 +42,7 @@ public class ConfigHandler extends Queue {
     public static final int EDITION_VERSION = 2;
     public static final String EDITION_BRANCH = Util.getBranch();
     public static final String EDITION_NAME = Util.getPluginName();
-    public static final String JAVA_VERSION = "1.8";
+    public static final String JAVA_VERSION = "11.0";
     public static final String SPIGOT_VERSION = "1.14";
     public static String path = "plugins/CoreProtect/";
     public static String sqlite = "database.db";
@@ -88,8 +88,15 @@ public class ConfigHandler extends Queue {
     public static Map<String, Integer> loggingItem = syncMap();
     public static ConcurrentHashMap<String, List<Object>> transactingChest = new ConcurrentHashMap<>();
     public static ConcurrentHashMap<String, List<ItemStack[]>> oldContainer = new ConcurrentHashMap<>();
-    public static ConcurrentHashMap<String, List<ItemStack>> itemsDrop = new ConcurrentHashMap<>();
     public static ConcurrentHashMap<String, List<ItemStack>> itemsPickup = new ConcurrentHashMap<>();
+    public static ConcurrentHashMap<String, List<ItemStack>> itemsDrop = new ConcurrentHashMap<>();
+    public static ConcurrentHashMap<String, List<ItemStack>> itemsThrown = new ConcurrentHashMap<>();
+    public static ConcurrentHashMap<String, List<ItemStack>> itemsShot = new ConcurrentHashMap<>();
+    public static ConcurrentHashMap<String, List<ItemStack>> itemsBreak = new ConcurrentHashMap<>();
+    public static ConcurrentHashMap<String, List<ItemStack>> itemsDestroy = new ConcurrentHashMap<>();
+    public static ConcurrentHashMap<String, List<ItemStack>> itemsCreate = new ConcurrentHashMap<>();
+    public static ConcurrentHashMap<String, List<ItemStack>> itemsSell = new ConcurrentHashMap<>();
+    public static ConcurrentHashMap<String, List<ItemStack>> itemsBuy = new ConcurrentHashMap<>();
     public static ConcurrentHashMap<String, Object[]> hopperAbort = new ConcurrentHashMap<>();
     public static Map<String, List<ItemStack[]>> forceContainer = syncMap();
     public static Map<String, Integer> lookupType = syncMap();
@@ -98,7 +105,7 @@ public class ConfigHandler extends Queue {
     public static Map<String, Integer> lookupPage = syncMap();
     public static Map<String, String> lookupCommand = syncMap();
     public static Map<String, List<Object>> lookupBlist = syncMap();
-    public static Map<String, List<Object>> lookupElist = syncMap();
+    public static Map<String, Map<Object, Boolean>> lookupElist = syncMap();
     public static Map<String, List<String>> lookupEUserlist = syncMap();
     public static Map<String, List<String>> lookupUlist = syncMap();
     public static Map<String, List<Integer>> lookupAlist = syncMap();
@@ -111,7 +118,8 @@ public class ConfigHandler extends Queue {
     public static Map<Integer, String> playerIdCacheReversed = syncMap();
     public static Map<String, List<Object>> lastRollback = syncMap();
     public static Map<String, Boolean> activeRollbacks = syncMap();
-    public static Map<UUID, Object[]> entityBlockMapper = syncMap();
+    public static Map<String, Object[]> entityBlockMapper = syncMap();
+    public static ConcurrentHashMap<Long, Long> populatedChunks = new ConcurrentHashMap<>();
     public static ConcurrentHashMap<String, String> language = new ConcurrentHashMap<>();
     public static List<String> databaseTables = new ArrayList<>();
 
@@ -404,7 +412,7 @@ public class ConfigHandler extends Queue {
 
             ConfigHandler.loadConfig(); // Load (or create) the configuration file.
             ConfigHandler.loadDatabase(); // Initialize MySQL and create tables if necessary.
-
+            ListenerHandler.registerNetworking(); // Register channels for networking API
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -446,6 +454,16 @@ public class ConfigHandler extends Queue {
         }
 
         return false;
+    }
+
+    public static void performDisable() {
+        try {
+            Database.closeConnection();
+            ListenerHandler.unregisterNetworking(); // Unregister channels for networking API
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
 }

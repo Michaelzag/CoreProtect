@@ -32,6 +32,7 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.CommandBlock;
 import org.bukkit.block.CreatureSpawner;
+import org.bukkit.block.ShulkerBox;
 import org.bukkit.block.banner.Pattern;
 import org.bukkit.block.data.Bisected;
 import org.bukkit.block.data.Bisected.Half;
@@ -61,7 +62,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.BannerMeta;
+import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.inventory.meta.CrossbowMeta;
 import org.bukkit.inventory.meta.FireworkEffectMeta;
 import org.bukkit.inventory.meta.FireworkMeta;
@@ -93,15 +96,15 @@ import net.coreprotect.utility.entity.HangingUtil;
 
 public class Rollback extends Queue {
 
-    public static List<String[]> performRollbackRestore(Statement statement, CommandSender user, List<String> checkUuids, List<String> checkUsers, String timeString, List<Object> restrictList, List<Object> excludeList, List<String> excludeUserList, List<Integer> actionList, Location location, Integer[] radius, long checkTime, boolean restrictWorld, boolean lookup, boolean verbose, final int rollbackType, final int preview) {
+    public static List<String[]> performRollbackRestore(Statement statement, CommandSender user, List<String> checkUuids, List<String> checkUsers, String timeString, List<Object> restrictList, Map<Object, Boolean> excludeList, List<String> excludeUserList, List<Integer> actionList, Location location, Integer[] radius, long startTime, long endTime, boolean restrictWorld, boolean lookup, boolean verbose, final int rollbackType, final int preview) {
         List<String[]> list = new ArrayList<>();
 
         try {
-            long startTime = System.currentTimeMillis();
+            long timeStart = System.currentTimeMillis();
             List<Object[]> lookupList = new ArrayList<>();
 
             if (!actionList.contains(4) && !actionList.contains(5) && !checkUsers.contains("#container")) {
-                lookupList = Lookup.performLookupRaw(statement, user, checkUuids, checkUsers, restrictList, excludeList, excludeUserList, actionList, location, radius, null, checkTime, -1, -1, restrictWorld, lookup);
+                lookupList = Lookup.performLookupRaw(statement, user, checkUuids, checkUsers, restrictList, excludeList, excludeUserList, actionList, location, radius, null, startTime, endTime, -1, -1, restrictWorld, lookup);
             }
 
             if (lookupList == null) {
@@ -110,12 +113,12 @@ public class Rollback extends Queue {
 
             boolean ROLLBACK_ITEMS = false;
             List<Object> itemRestrictList = new ArrayList<>(restrictList);
-            List<Object> itemExcludeList = new ArrayList<>(excludeList);
+            Map<Object, Boolean> itemExcludeList = new HashMap<>(excludeList);
 
             if (actionList.contains(1)) {
                 for (Object target : restrictList) {
                     if (target instanceof Material) {
-                        if (!excludeList.contains(target)) {
+                        if (!excludeList.containsKey(target)) {
                             if (BlockGroup.CONTAINERS.contains(target)) {
                                 ROLLBACK_ITEMS = true;
                                 itemRestrictList.clear();
@@ -135,7 +138,8 @@ public class Rollback extends Queue {
                     itemActionList.add(4);
                 }
 
-                itemList = Lookup.performLookupRaw(statement, user, checkUuids, checkUsers, itemRestrictList, itemExcludeList, excludeUserList, itemActionList, location, radius, null, checkTime, -1, -1, restrictWorld, lookup);
+                itemExcludeList.entrySet().removeIf(entry -> Boolean.TRUE.equals(entry.getValue()));
+                itemList = Lookup.performLookupRaw(statement, user, checkUuids, checkUsers, itemRestrictList, itemExcludeList, excludeUserList, itemActionList, location, radius, null, startTime, endTime, -1, -1, restrictWorld, lookup);
             }
 
             TreeMap<Long, Integer> chunkList = new TreeMap<>();
@@ -411,6 +415,9 @@ public class Rollback extends Queue {
                                         }
                                     }
                                 }
+                                else {
+                                    entityCount1++;
+                                }
                             }
                             else if (rowAction == 3) { // entity kill
                                 String world = Util.getWorldName(rowWorldId);
@@ -519,27 +526,40 @@ public class Rollback extends Queue {
                                 boolean countBlock = true;
                                 Material changeType = block.getType();
                                 BlockData changeBlockData = block.getBlockData();
+                                BlockData pendingChangeData = chunkChanges.get(block);
+                                Material pendingChangeType = changeType;
+                                if (pendingChangeData != null) {
+                                    pendingChangeType = pendingChangeData.getMaterial();
+                                }
+                                else {
+                                    pendingChangeData = changeBlockData;
+                                }
 
                                 if (rowRolledBack == 1 && rollbackType == 0) { // rollback
                                     countBlock = false;
                                 }
 
-                                if ((rowType == changeType) && ((!BukkitAdapter.ADAPTER.isItemFrame(oldTypeMaterial)) && (oldTypeMaterial != Material.PAINTING) && (oldTypeMaterial != Material.ARMOR_STAND)) && (oldTypeMaterial != Material.END_CRYSTAL)) {
+                                if ((rowType == pendingChangeType) && ((!BukkitAdapter.ADAPTER.isItemFrame(oldTypeMaterial)) && (oldTypeMaterial != Material.PAINTING) && (oldTypeMaterial != Material.ARMOR_STAND)) && (oldTypeMaterial != Material.END_CRYSTAL)) {
                                     // block is already changed!
-                                    if (blockData != null) {
-                                        if (blockData.getAsString().equals(changeBlockData.getAsString()) || blockData instanceof MultipleFacing || blockData instanceof Stairs || blockData instanceof RedstoneWire) {
+                                    BlockData checkData = rowType == Material.AIR ? blockData : rawBlockData;
+                                    if (checkData != null) {
+                                        if (checkData.getAsString().equals(pendingChangeData.getAsString()) || checkData instanceof MultipleFacing || checkData instanceof Stairs || checkData instanceof RedstoneWire) {
                                             if (rowType != Material.CHEST && rowType != Material.TRAPPED_CHEST) { // always update double chests
                                                 changeBlock = false;
                                             }
                                         }
                                     }
+                                    else if (rowType == Material.AIR) {
+                                        changeBlock = false;
+                                    }
+
                                     countBlock = false;
                                 }
-                                else if ((changeType != Material.AIR) && (changeType != Material.CAVE_AIR)) {
+                                else if ((pendingChangeType != Material.AIR) && (pendingChangeType != Material.CAVE_AIR)) {
                                     countBlock = true;
                                 }
 
-                                if ((changeType == Material.WATER) && (rowType != Material.AIR) && (rowType != Material.CAVE_AIR) && blockData != null) {
+                                if ((pendingChangeType == Material.WATER) && (rowType != Material.AIR) && (rowType != Material.CAVE_AIR) && blockData != null) {
                                     if (blockData instanceof Waterlogged) {
                                         if (Material.WATER.createBlockData().equals(block.getBlockData())) {
                                             Waterlogged waterlogged = (Waterlogged) blockData;
@@ -616,11 +636,10 @@ public class Rollback extends Queue {
                                             }
                                         }
                                         else if ((rowType == Material.AIR) && ((oldTypeMaterial == Material.WATER))) {
-                                            BlockData existingBlockData = block.getBlockData();
-                                            if (existingBlockData instanceof Waterlogged) {
-                                                Waterlogged waterlogged = (Waterlogged) existingBlockData;
+                                            if (pendingChangeData instanceof Waterlogged) {
+                                                Waterlogged waterlogged = (Waterlogged) pendingChangeData;
                                                 waterlogged.setWaterlogged(false);
-                                                block.setBlockData(waterlogged);
+                                                Util.prepareTypeAndData(chunkChanges, block, null, waterlogged, false);
                                             }
                                             else {
                                                 Util.prepareTypeAndData(chunkChanges, block, rowType, blockData, true);
@@ -681,16 +700,14 @@ public class Rollback extends Queue {
 
                                             boolean remove = true;
                                             if ((rowType == Material.AIR)) {
-                                                BlockData currentBlockData = block.getBlockData();
-                                                if (currentBlockData instanceof Waterlogged) {
-                                                    Waterlogged waterlogged = (Waterlogged) currentBlockData;
+                                                if (pendingChangeData instanceof Waterlogged) {
+                                                    Waterlogged waterlogged = (Waterlogged) pendingChangeData;
                                                     if (waterlogged.isWaterlogged()) {
-                                                        boolean physics = (changeBlockData instanceof Chest);
-                                                        Util.prepareTypeAndData(chunkChanges, block, Material.WATER, Material.WATER.createBlockData(), physics);
+                                                        Util.prepareTypeAndData(chunkChanges, block, Material.WATER, Material.WATER.createBlockData(), true);
                                                         remove = false;
                                                     }
                                                 }
-                                                else if ((changeType == Material.WATER)) {
+                                                else if ((pendingChangeType == Material.WATER)) {
                                                     if (rawBlockData instanceof Waterlogged) {
                                                         Waterlogged waterlogged = (Waterlogged) rawBlockData;
                                                         if (waterlogged.isWaterlogged()) {
@@ -719,11 +736,18 @@ public class Rollback extends Queue {
                                                     int worldMinHeight = BukkitAdapter.ADAPTER.getMinHeight(bukkitWorld);
                                                     if (bisectLocation.getBlockY() >= worldMinHeight && bisectLocation.getBlockY() < worldMaxHeight) {
                                                         Block bisectBlock = block.getWorld().getBlockAt(bisectLocation);
-                                                        Util.prepareTypeAndData(chunkChanges, bisectBlock, rowType, null, physics);
+                                                        Util.prepareTypeAndData(chunkChanges, bisectBlock, rowType, null, false);
 
                                                         if (countBlock) {
                                                             blockCount1++;
                                                         }
+                                                    }
+                                                }
+                                                else if (changeBlockData instanceof Bed) {
+                                                    Bed bed = (Bed) changeBlockData;
+                                                    if (bed.getPart() == Part.FOOT) {
+                                                        Block adjacentBlock = block.getRelative(bed.getFacing());
+                                                        Util.prepareTypeAndData(chunkChanges, adjacentBlock, rowType, null, false);
                                                     }
                                                 }
 
@@ -800,11 +824,10 @@ public class Rollback extends Queue {
                                             }
                                         }
                                         else if ((rowType == Material.WATER)) {
-                                            BlockData existingBlockData = block.getBlockData();
-                                            if (existingBlockData instanceof Waterlogged) {
-                                                Waterlogged waterlogged = (Waterlogged) existingBlockData;
+                                            if (pendingChangeData instanceof Waterlogged) {
+                                                Waterlogged waterlogged = (Waterlogged) pendingChangeData;
                                                 waterlogged.setWaterlogged(true);
-                                                block.setBlockData(waterlogged);
+                                                Util.prepareTypeAndData(chunkChanges, block, null, waterlogged, false);
                                             }
                                             else {
                                                 Util.prepareTypeAndData(chunkChanges, block, rowType, blockData, false);
@@ -817,83 +840,73 @@ public class Rollback extends Queue {
                                         else if ((rowType == Material.NETHER_PORTAL) && rowAction == 0) {
                                             Util.prepareTypeAndData(chunkChanges, block, Material.FIRE, null, true);
                                         }
-                                        else if (rowType == Material.IRON_DOOR || BlockGroup.DOORS.contains(rowType)) {
+                                        else if (blockData == null && rowData > 0 && (rowType == Material.IRON_DOOR || BlockGroup.DOORS.contains(rowType))) {
                                             if (countBlock) {
                                                 blockCount1++;
                                             }
 
-                                            if (blockData != null) {
-                                                Util.prepareTypeAndData(chunkChanges, block, rowType, blockData, false);
+                                            block.setType(rowType, false);
+                                            Door door = (Door) block.getBlockData();
+                                            if (rowData >= 8) {
+                                                door.setHalf(Half.TOP);
+                                                rowData = rowData - 8;
                                             }
                                             else {
-                                                block.setType(rowType, false);
-                                                Door door = (Door) block.getBlockData();
-                                                if (rowData >= 8) {
-                                                    door.setHalf(Half.TOP);
-                                                    rowData = rowData - 8;
-                                                }
-                                                else {
-                                                    door.setHalf(Half.BOTTOM);
-                                                }
-                                                if (rowData >= 4) {
-                                                    door.setHinge(Hinge.RIGHT);
-                                                    rowData = rowData - 4;
-                                                }
-                                                else {
-                                                    door.setHinge(Hinge.LEFT);
-                                                }
-                                                BlockFace face = BlockFace.NORTH;
-
-                                                switch (rowData) {
-                                                    case 0:
-                                                        face = BlockFace.EAST;
-                                                        break;
-                                                    case 1:
-                                                        face = BlockFace.SOUTH;
-                                                        break;
-                                                    case 2:
-                                                        face = BlockFace.WEST;
-                                                        break;
-                                                }
-
-                                                door.setFacing(face);
-                                                door.setOpen(false);
-                                                block.setBlockData(door, false);
+                                                door.setHalf(Half.BOTTOM);
                                             }
+                                            if (rowData >= 4) {
+                                                door.setHinge(Hinge.RIGHT);
+                                                rowData = rowData - 4;
+                                            }
+                                            else {
+                                                door.setHinge(Hinge.LEFT);
+                                            }
+                                            BlockFace face = BlockFace.NORTH;
+
+                                            switch (rowData) {
+                                                case 0:
+                                                    face = BlockFace.EAST;
+                                                    break;
+                                                case 1:
+                                                    face = BlockFace.SOUTH;
+                                                    break;
+                                                case 2:
+                                                    face = BlockFace.WEST;
+                                                    break;
+                                            }
+
+                                            door.setFacing(face);
+                                            door.setOpen(false);
+                                            block.setBlockData(door, false);
                                         }
-                                        else if (rowType.name().endsWith("_BED")) {
+                                        else if (blockData == null && rowData > 0 && (rowType.name().endsWith("_BED"))) {
                                             if (countBlock) {
                                                 blockCount1++;
                                             }
 
-                                            if (blockData != null) {
-                                                Util.prepareTypeAndData(chunkChanges, block, rowType, blockData, false);
+                                            block.setType(rowType, false);
+                                            Bed bed = (Bed) block.getBlockData();
+                                            BlockFace face = BlockFace.NORTH;
+
+                                            if (rowData > 4) {
+                                                bed.setPart(Part.HEAD);
+                                                rowData = rowData - 4;
                                             }
-                                            else {
-                                                block.setType(rowType, false);
-                                                Bed bed = (Bed) block.getBlockData();
-                                                BlockFace face = BlockFace.NORTH;
 
-                                                if (rowData > 4) {
-                                                    bed.setPart(Part.HEAD);
-                                                    rowData = rowData - 4;
-                                                }
-
-                                                switch (rowData) {
-                                                    case 2:
-                                                        face = BlockFace.WEST;
-                                                        break;
-                                                    case 3:
-                                                        face = BlockFace.EAST;
-                                                        break;
-                                                    case 4:
-                                                        face = BlockFace.SOUTH;
-                                                        break;
-                                                }
-
-                                                bed.setFacing(face);
-                                                block.setBlockData(bed, false);
+                                            switch (rowData) {
+                                                case 2:
+                                                    face = BlockFace.WEST;
+                                                    break;
+                                                case 3:
+                                                    face = BlockFace.EAST;
+                                                    break;
+                                                case 4:
+                                                    face = BlockFace.SOUTH;
+                                                    break;
                                             }
+
+                                            bed.setFacing(face);
+                                            block.setBlockData(bed, false);
                                         }
                                         else if (rowType.name().endsWith("_BANNER")) {
                                             Util.prepareTypeAndData(chunkChanges, block, rowType, blockData, false);
@@ -964,6 +977,23 @@ public class Rollback extends Queue {
                                                 blockCount1++;
                                             }
                                         }
+                                        else if (rowType != Material.AIR && rawBlockData instanceof Bed) {
+                                            Bed bed = (Bed) rawBlockData;
+                                            if (bed.getPart() == Part.FOOT) {
+                                                Block adjacentBlock = block.getRelative(bed.getFacing());
+                                                Bed bedData = (Bed) rawBlockData.clone();
+                                                bedData.setPart(Part.HEAD);
+                                                Util.prepareTypeAndData(chunkChanges, adjacentBlock, rowType, bedData, false);
+                                                if (countBlock) {
+                                                    blockCount1++;
+                                                }
+                                            }
+
+                                            Util.prepareTypeAndData(chunkChanges, block, rowType, blockData, true);
+                                            if (countBlock) {
+                                                blockCount1++;
+                                            }
+                                        }
                                         else {
                                             boolean physics = true;
                                             /*
@@ -1008,6 +1038,7 @@ public class Rollback extends Queue {
                         }
                         chunkChanges.clear();
 
+                        Map<Player, List<Integer>> sortPlayers = new HashMap<>();
                         Object container = null;
                         Material containerType = null;
                         boolean containerInit = false;
@@ -1037,6 +1068,7 @@ public class Rollback extends Queue {
                             int rolledBackInventory = Util.rolledBack((Integer) row[9], true);
                             if (rowType != null) {
                                 if (inventoryRollback && ((rollbackType == 0 && rolledBackInventory == 0) || (rollbackType == 1 && rolledBackInventory == 1))) {
+                                    Material inventoryItem = Util.itemFilter(rowType, ((Integer) row[14] == 0));
                                     int rowUserId = (Integer) row[2];
                                     String rowUser = ConfigHandler.playerIdCacheReversed.get(rowUserId);
                                     if (rowUser == null) {
@@ -1054,8 +1086,8 @@ public class Rollback extends Queue {
                                     }
 
                                     int inventoryAction = 0;
-                                    if (rowAction == ItemLogger.ITEM_DROP || rowAction == ItemLogger.ITEM_PICKUP) {
-                                        inventoryAction = (rowAction == ItemLogger.ITEM_PICKUP ? 1 : 0);
+                                    if (rowAction == ItemLogger.ITEM_DROP || rowAction == ItemLogger.ITEM_PICKUP || rowAction == ItemLogger.ITEM_THROW || rowAction == ItemLogger.ITEM_SHOOT || rowAction == ItemLogger.ITEM_BREAK || rowAction == ItemLogger.ITEM_DESTROY || rowAction == ItemLogger.ITEM_CREATE || rowAction == ItemLogger.ITEM_SELL || rowAction == ItemLogger.ITEM_BUY) {
+                                        inventoryAction = ((rowAction == ItemLogger.ITEM_PICKUP || rowAction == ItemLogger.ITEM_CREATE || rowAction == ItemLogger.ITEM_BUY) ? 1 : 0);
                                     }
                                     else if (rowAction == ItemLogger.ITEM_REMOVE_ENDER || rowAction == ItemLogger.ITEM_ADD_ENDER) {
                                         inventoryAction = (rowAction == ItemLogger.ITEM_REMOVE_ENDER ? 1 : 0);
@@ -1065,12 +1097,19 @@ public class Rollback extends Queue {
                                     }
 
                                     int action = rollbackType == 0 ? (inventoryAction ^ 1) : inventoryAction;
-                                    ItemStack itemstack = new ItemStack(rowType, rowAmount, (short) rowData);
+                                    ItemStack itemstack = new ItemStack(inventoryItem, rowAmount);
                                     Object[] populatedStack = populateItemStack(itemstack, rowMetadata);
                                     if (rowAction == ItemLogger.ITEM_REMOVE_ENDER || rowAction == ItemLogger.ITEM_ADD_ENDER) {
                                         modifyContainerItems(containerType, player.getEnderChest(), (Integer) populatedStack[0], ((ItemStack) populatedStack[2]).clone(), action ^ 1);
                                     }
-                                    modifyContainerItems(containerType, player.getInventory(), (Integer) populatedStack[0], (ItemStack) populatedStack[2], action);
+                                    int modifiedArmor = modifyContainerItems(containerType, player.getInventory(), (Integer) populatedStack[0], (ItemStack) populatedStack[2], action);
+                                    if (modifiedArmor > -1) {
+                                        List<Integer> currentSortList = sortPlayers.getOrDefault(player, new ArrayList<>());
+                                        if (!currentSortList.contains(modifiedArmor)) {
+                                            currentSortList.add(modifiedArmor);
+                                        }
+                                        sortPlayers.put(player, currentSortList);
+                                    }
 
                                     itemCount1 = itemCount1 + rowAmount;
                                     ConfigHandler.rollbackHash.put(finalUserString, new int[] { itemCount1, blockCount1, entityCount1, 0 });
@@ -1082,7 +1121,7 @@ public class Rollback extends Queue {
                                 }
 
                                 if ((rollbackType == 0 && rowRolledBack == 0) || (rollbackType == 1 && rowRolledBack == 1)) {
-                                    ItemStack itemstack = new ItemStack(rowType, rowAmount, (short) rowData);
+                                    ItemStack itemstack = new ItemStack(rowType, rowAmount);
                                     Object[] populatedStack = populateItemStack(itemstack, rowMetadata);
                                     String faceData = (String) populatedStack[1];
 
@@ -1107,7 +1146,6 @@ public class Rollback extends Queue {
                                             containerType = block.getType();
                                         }
                                         else if (BlockGroup.CONTAINERS.contains(Material.ARMOR_STAND) || BlockGroup.CONTAINERS.contains(Material.ITEM_FRAME)) {
-                                            BlockFace blockFace = BlockFace.valueOf(faceData);
                                             for (Entity entity : block.getChunk().getEntities()) {
                                                 if (entity.getLocation().getBlockX() == rowX && entity.getLocation().getBlockY() == rowY && entity.getLocation().getBlockZ() == rowZ) {
                                                     if (entity instanceof ArmorStand) {
@@ -1117,7 +1155,7 @@ public class Rollback extends Queue {
                                                     else if (entity instanceof ItemFrame) {
                                                         container = entity;
                                                         containerType = Material.ITEM_FRAME;
-                                                        if (blockFace == ((ItemFrame) entity).getFacing()) {
+                                                        if (faceData.length() > 0 && (BlockFace.valueOf(faceData) == ((ItemFrame) entity).getFacing())) {
                                                             break;
                                                         }
                                                     }
@@ -1155,6 +1193,11 @@ public class Rollback extends Queue {
                             ConfigHandler.rollbackHash.put(finalUserString, new int[] { itemCount1, blockCount1, entityCount1, 0 });
                         }
                         itemData.clear();
+
+                        for (Entry<Player, List<Integer>> sortEntry : sortPlayers.entrySet()) {
+                            sortContainerItems(sortEntry.getKey().getInventory(), sortEntry.getValue());
+                        }
+                        sortPlayers.clear();
 
                         int[] rollbackHashData1 = ConfigHandler.rollbackHash.get(finalUserString);
                         int itemCount1 = rollbackHashData1[0];
@@ -1236,8 +1279,8 @@ public class Rollback extends Queue {
             int itemCount = rollbackHashData[0];
             int blockCount = rollbackHashData[1];
             int entityCount = rollbackHashData[2];
-            long endTime = System.currentTimeMillis();
-            double totalSeconds = (endTime - startTime) / 1000.0;
+            long timeFinish = System.currentTimeMillis();
+            double totalSeconds = (timeFinish - timeStart) / 1000.0;
 
             if (user != null) {
                 finishRollbackRestore(user, location, checkUsers, restrictList, excludeList, excludeUserList, actionList, timeString, chunkCount, totalSeconds, itemCount, blockCount, entityCount, rollbackType, radius, verbose, restrictWorld, preview);
@@ -1253,7 +1296,7 @@ public class Rollback extends Queue {
         return null;
     }
 
-    static void finishRollbackRestore(CommandSender user, Location location, List<String> checkUsers, List<Object> restrictList, List<Object> excludeList, List<String> excludeUserList, List<Integer> actionList, String timeString, Integer chunkCount, Double seconds, Integer itemCount, Integer blockCount, Integer entityCount, int rollbackType, Integer[] radius, boolean verbose, boolean restrictWorld, int preview) {
+    static void finishRollbackRestore(CommandSender user, Location location, List<String> checkUsers, List<Object> restrictList, Map<Object, Boolean> excludeList, List<String> excludeUserList, List<Integer> actionList, String timeString, Integer chunkCount, Double seconds, Integer itemCount, Integer blockCount, Integer entityCount, int rollbackType, Integer[] radius, boolean verbose, boolean restrictWorld, int preview) {
         try {
             if (preview == 2) {
                 Chat.sendMessage(user, Color.DARK_AQUA + "CoreProtect " + Color.WHITE + "- " + Phrase.build(Phrase.PREVIEW_CANCELLED));
@@ -1394,9 +1437,23 @@ public class Rollback extends Queue {
                 boolean entity = false;
 
                 int excludeCount = 0;
-                for (Object excludeTarget : excludeList) {
-                    String targetName = "";
+                for (Map.Entry<Object, Boolean> entry : excludeList.entrySet()) {
+                    Object excludeTarget = entry.getKey();
+                    Boolean excludeTargetInternal = entry.getValue();
 
+                    // don't display default block excludes
+                    if (Boolean.TRUE.equals(excludeTargetInternal)) {
+                        continue;
+                    }
+
+                    // don't display that excluded water/fire/farmland in inventory rollbacks
+                    if (actionList.contains(4) && actionList.contains(11)) {
+                        if (excludeTarget.equals(Material.FIRE) || excludeTarget.equals(Material.WATER) || excludeTarget.equals(Material.FARMLAND)) {
+                            continue;
+                        }
+                    }
+
+                    String targetName = "";
                     if (excludeTarget instanceof Material) {
                         targetName = ((Material) excludeTarget).name().toLowerCase(Locale.ROOT);
                         item = (!item ? !(((Material) excludeTarget).isBlock()) : item);
@@ -1428,7 +1485,9 @@ public class Rollback extends Queue {
                     targetType = Selector.SECOND;
                 }
 
-                Chat.sendMessage(user, Color.DARK_AQUA + "CoreProtect " + Color.WHITE + "- " + Phrase.build(Phrase.ROLLBACK_INCLUDE, excludeTargets.toString(), Selector.SECOND, targetType, (excludeCount == 1 ? Selector.FIRST : Selector.SECOND))); // exclude
+                if (excludeCount > 0) {
+                    Chat.sendMessage(user, Color.DARK_AQUA + "CoreProtect " + Color.WHITE + "- " + Phrase.build(Phrase.ROLLBACK_INCLUDE, excludeTargets.toString(), Selector.SECOND, targetType, (excludeCount == 1 ? Selector.FIRST : Selector.SECOND))); // exclude
+                }
             }
 
             if (excludeUserList.size() > 0) {
@@ -1464,7 +1523,7 @@ public class Rollback extends Queue {
                 modifiedData = modifiedData.append(Phrase.build(Phrase.AMOUNT_ITEM, NumberFormat.getInstance().format(blockCount), (blockCount == 1 ? Selector.FIRST : Selector.SECOND)));
                 modifyCount++;
             }
-            else if (preview == 0) {
+            else {
                 if (itemCount > 0 || actionList.contains(4)) {
                     modifiedData = modifiedData.append(Phrase.build(Phrase.AMOUNT_ITEM, NumberFormat.getInstance().format(itemCount), (itemCount == 1 ? Selector.FIRST : Selector.SECOND)));
                     modifyCount++;
@@ -1478,17 +1537,13 @@ public class Rollback extends Queue {
                     modifyCount++;
                 }
 
-                if (blockCount > 0 || !actionList.contains(4)) {
+                if (blockCount > 0 || !actionList.contains(4) || preview > 0) {
                     if (modifyCount > 0) {
                         modifiedData.append(", ");
                     }
                     modifiedData.append(Phrase.build(Phrase.AMOUNT_BLOCK, NumberFormat.getInstance().format(blockCount), (blockCount == 1 ? Selector.FIRST : Selector.SECOND)));
                     modifyCount++;
                 }
-            }
-            else if (preview > 0) {
-                modifiedData = modifiedData.append(Phrase.build(Phrase.AMOUNT_BLOCK, NumberFormat.getInstance().format(blockCount), (blockCount == 1 ? Selector.FIRST : Selector.SECOND)));
-                modifyCount++;
             }
 
             StringBuilder modifiedDataVerbose = new StringBuilder();
@@ -1525,7 +1580,8 @@ public class Rollback extends Queue {
         }
     }
 
-    static void modifyContainerItems(Material type, Object container, int slot, ItemStack itemstack, int action) {
+    static int modifyContainerItems(Material type, Object container, int slot, ItemStack itemstack, int action) {
+        int modifiedArmor = -1;
         try {
             ItemStack[] contents = null;
 
@@ -1578,13 +1634,34 @@ public class Rollback extends Queue {
             else {
                 Inventory inventory = (Inventory) container;
                 if (inventory != null) {
+                    boolean isPlayerInventory = (inventory instanceof PlayerInventory);
                     if (action == 1) {
                         int count = 0;
                         int amount = itemstack.getAmount();
                         itemstack.setAmount(1);
 
                         while (count < amount) {
-                            inventory.addItem(itemstack);
+                            boolean addedItem = false;
+                            if (isPlayerInventory) {
+                                int setArmor = Util.setPlayerArmor((PlayerInventory) inventory, itemstack);
+                                addedItem = (setArmor > -1);
+                                modifiedArmor = addedItem ? setArmor : modifiedArmor;
+                            }
+                            if (!addedItem) {
+                                addedItem = (inventory.addItem(itemstack).size() == 0);
+                            }
+                            if (!addedItem && isPlayerInventory) {
+                                PlayerInventory playerInventory = (PlayerInventory) inventory;
+                                ItemStack offhand = playerInventory.getItemInOffHand();
+                                if (offhand == null || offhand.getType() == Material.AIR || (itemstack.isSimilar(offhand) && offhand.getAmount() < offhand.getMaxStackSize())) {
+                                    ItemStack setOffhand = itemstack.clone();
+                                    if (itemstack.isSimilar(offhand)) {
+                                        setOffhand.setAmount(offhand.getAmount() + 1);
+                                    }
+
+                                    playerInventory.setItemInOffHand(setOffhand);
+                                }
+                            }
                             count++;
                         }
                     }
@@ -1593,7 +1670,7 @@ public class Rollback extends Queue {
                         ItemStack removeMatch = itemstack.clone();
                         removeMatch.setAmount(1);
 
-                        ItemStack[] inventoryContents = inventory.getStorageContents().clone();
+                        ItemStack[] inventoryContents = (isPlayerInventory ? inventory.getContents() : inventory.getStorageContents()).clone();
                         for (int i = inventoryContents.length - 1; i >= 0; i--) {
                             if (inventoryContents[i] != null) {
                                 ItemStack itemStack = inventoryContents[i].clone();
@@ -1630,7 +1707,12 @@ public class Rollback extends Queue {
                             }
                         }
 
-                        inventory.setStorageContents(inventoryContents);
+                        if (isPlayerInventory) {
+                            inventory.setContents(inventoryContents);
+                        }
+                        else {
+                            inventory.setStorageContents(inventoryContents);
+                        }
 
                         int count = 0;
                         while (count < removeAmount) {
@@ -1640,6 +1722,37 @@ public class Rollback extends Queue {
                     }
                 }
             }
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return modifiedArmor;
+    }
+
+    public static void sortContainerItems(PlayerInventory inventory, List<Integer> modifiedArmorSlots) {
+        try {
+            ItemStack[] armorContents = inventory.getArmorContents();
+            ItemStack[] storageContents = inventory.getStorageContents();
+
+            for (int armor = 0; armor < armorContents.length; armor++) {
+                ItemStack armorItem = armorContents[armor];
+                if (armorItem == null || !modifiedArmorSlots.contains(armor)) {
+                    continue;
+                }
+
+                for (int storage = 0; storage < storageContents.length; storage++) {
+                    ItemStack storageItem = storageContents[storage];
+                    if (storageItem == null) {
+                        storageContents[storage] = armorItem;
+                        armorContents[armor] = null;
+                        break;
+                    }
+                }
+            }
+
+            inventory.setArmorContents(armorContents);
+            inventory.setStorageContents(storageContents);
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -1681,9 +1794,36 @@ public class Rollback extends Queue {
             */
 
             Material rowType = itemstack.getType();
+            List<Object> metaList = (List<Object>) list;
+            if (metaList.size() > 0 && !(metaList.get(0) instanceof List<?>)) {
+                if (rowType.name().endsWith("_BANNER")) {
+                    BannerMeta meta = (BannerMeta) itemstack.getItemMeta();
+                    for (Object value : metaList) {
+                        if (value instanceof Map) {
+                            Pattern pattern = new Pattern((Map<String, Object>) value);
+                            meta.addPattern(pattern);
+                        }
+                    }
+                    itemstack.setItemMeta(meta);
+                }
+                else if (BlockGroup.SHULKER_BOXES.contains(rowType)) {
+                    BlockStateMeta meta = (BlockStateMeta) itemstack.getItemMeta();
+                    ShulkerBox shulkerBox = (ShulkerBox) meta.getBlockState();
+                    for (Object value : metaList) {
+                        ItemStack item = Util.unserializeItemStackLegacy(value);
+                        if (item != null) {
+                            shulkerBox.getInventory().addItem(item);
+                        }
+                    }
+                    meta.setBlockState(shulkerBox);
+                    itemstack.setItemMeta(meta);
+                }
+
+                return new Object[] { slot, faceData, itemstack };
+            }
+
             int itemCount = 0;
             Builder effectBuilder = FireworkEffect.builder();
-
             for (List<Map<String, Object>> map : (List<List<Map<String, Object>>>) list) {
                 if (map.size() == 0) {
                     if (itemCount == 3 && (rowType == Material.FIREWORK_ROCKET || rowType == Material.FIREWORK_STAR)) {
@@ -1774,7 +1914,7 @@ public class Rollback extends Queue {
                         }
                         itemstack.setItemMeta(meta);
                     }
-                    else if ((rowType == Material.MAP)) {
+                    else if (rowType == Material.MAP || rowType == Material.FILLED_MAP) {
                         for (Map<String, Object> colorData : map) {
                             MapMeta meta = (MapMeta) itemstack.getItemMeta();
                             org.bukkit.Color color = org.bukkit.Color.deserialize(colorData);
@@ -1786,8 +1926,10 @@ public class Rollback extends Queue {
                         if (itemCount == 1) {
                             effectBuilder = FireworkEffect.builder();
                             for (Map<String, Object> fireworkData : map) {
+                                org.bukkit.FireworkEffect.Type type = (org.bukkit.FireworkEffect.Type) fireworkData.getOrDefault("type", org.bukkit.FireworkEffect.Type.BALL);
                                 boolean hasFlicker = (Boolean) fireworkData.get("flicker");
                                 boolean hasTrail = (Boolean) fireworkData.get("trail");
+                                effectBuilder.with(type);
                                 effectBuilder.flicker(hasFlicker);
                                 effectBuilder.trail(hasTrail);
                             }

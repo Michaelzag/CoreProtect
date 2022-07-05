@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -21,6 +22,7 @@ import net.coreprotect.consumer.Consumer;
 import net.coreprotect.consumer.Queue;
 import net.coreprotect.database.logger.ItemLogger;
 import net.coreprotect.database.statement.UserStatement;
+import net.coreprotect.listener.channel.PluginChannelHandshakeListener;
 import net.coreprotect.thread.CacheHandler;
 import net.coreprotect.utility.Util;
 
@@ -75,7 +77,7 @@ public class Lookup extends Queue {
         return newList;
     }
 
-    public static long countLookupRows(Statement statement, CommandSender user, List<String> checkUuids, List<String> checkUsers, List<Object> restrictList, List<Object> excludeList, List<String> excludeUserList, List<Integer> actionList, Location location, Integer[] radius, Long[] rowData, long checkTime, boolean restrictWorld, boolean lookup) {
+    public static long countLookupRows(Statement statement, CommandSender user, List<String> checkUuids, List<String> checkUsers, List<Object> restrictList, Map<Object, Boolean> excludeList, List<String> excludeUserList, List<Integer> actionList, Location location, Integer[] radius, Long[] rowData, long startTime, long endTime, boolean restrictWorld, boolean lookup) {
         Long rows = 0L;
 
         try {
@@ -84,7 +86,7 @@ public class Lookup extends Queue {
             }
             Consumer.isPaused = true;
 
-            ResultSet results = rawLookupResultSet(statement, user, checkUuids, checkUsers, restrictList, excludeList, excludeUserList, actionList, location, radius, null, checkTime, -1, -1, restrictWorld, lookup, true);
+            ResultSet results = rawLookupResultSet(statement, user, checkUuids, checkUsers, restrictList, excludeList, excludeUserList, actionList, location, radius, null, startTime, endTime, -1, -1, restrictWorld, lookup, true);
             while (results.next()) {
                 int resultTable = results.getInt("tbl");
                 long count = results.getLong("count");
@@ -102,11 +104,11 @@ public class Lookup extends Queue {
         return rows;
     }
 
-    public static List<String[]> performLookup(Statement statement, CommandSender user, List<String> checkUuids, List<String> checkUsers, List<Object> restrictList, List<Object> excludeList, List<String> excludeUserList, List<Integer> actionList, Location location, Integer[] radius, long checkTime, boolean restrictWorld, boolean lookup) {
+    public static List<String[]> performLookup(Statement statement, CommandSender user, List<String> checkUuids, List<String> checkUsers, List<Object> restrictList, Map<Object, Boolean> excludeList, List<String> excludeUserList, List<Integer> actionList, Location location, Integer[] radius, long startTime, long endTime, boolean restrictWorld, boolean lookup) {
         List<String[]> newList = new ArrayList<>();
 
         try {
-            List<Object[]> lookupList = performLookupRaw(statement, user, checkUuids, checkUsers, restrictList, excludeList, excludeUserList, actionList, location, radius, null, checkTime, -1, -1, restrictWorld, lookup);
+            List<Object[]> lookupList = performLookupRaw(statement, user, checkUuids, checkUsers, restrictList, excludeList, excludeUserList, actionList, location, radius, null, startTime, endTime, -1, -1, restrictWorld, lookup);
             newList = convertRawLookup(statement, lookupList);
         }
         catch (Exception e) {
@@ -116,7 +118,7 @@ public class Lookup extends Queue {
         return newList;
     }
 
-    static List<Object[]> performLookupRaw(Statement statement, CommandSender user, List<String> checkUuids, List<String> checkUsers, List<Object> restrictList, List<Object> excludeList, List<String> excludeUserList, List<Integer> actionList, Location location, Integer[] radius, Long[] rowData, long checkTime, int limitOffset, int limitCount, boolean restrictWorld, boolean lookup) {
+    static List<Object[]> performLookupRaw(Statement statement, CommandSender user, List<String> checkUuids, List<String> checkUsers, List<Object> restrictList, Map<Object, Boolean> excludeList, List<String> excludeUserList, List<Integer> actionList, Location location, Integer[] radius, Long[] rowData, long startTime, long endTime, int limitOffset, int limitCount, boolean restrictWorld, boolean lookup) {
         List<Object[]> list = new ArrayList<>();
         List<Integer> invalidRollbackActions = new ArrayList<>();
         invalidRollbackActions.add(2);
@@ -136,7 +138,7 @@ public class Lookup extends Queue {
 
             Consumer.isPaused = true;
 
-            ResultSet results = rawLookupResultSet(statement, user, checkUuids, checkUsers, restrictList, excludeList, excludeUserList, actionList, location, radius, rowData, checkTime, limitOffset, limitCount, restrictWorld, lookup, false);
+            ResultSet results = rawLookupResultSet(statement, user, checkUuids, checkUsers, restrictList, excludeList, excludeUserList, actionList, location, radius, rowData, startTime, endTime, limitOffset, limitCount, restrictWorld, lookup, false);
 
             while (results.next()) {
                 if (actionList.contains(6) || actionList.contains(7)) {
@@ -146,6 +148,13 @@ public class Lookup extends Queue {
                     String resultMessage = results.getString("message");
 
                     Object[] dataArray = new Object[] { resultId, resultTime, resultUserId, resultMessage };
+                    if (PluginChannelHandshakeListener.getInstance().isPluginChannelPlayer(user)) {
+                        int resultWorldId = results.getInt("wid");
+                        int resultX = results.getInt("x");
+                        int resultY = results.getInt("y");
+                        int resultZ = results.getInt("z");
+                        dataArray = new Object[] { resultId, resultTime, resultUserId, resultMessage, resultWorldId, resultX, resultY, resultZ };
+                    }
                     list.add(dataArray);
                 }
                 else if (actionList.contains(8)) {
@@ -234,10 +243,8 @@ public class Lookup extends Queue {
                         resultData = results.getInt("data");
                         resultAmount = results.getInt("amount");
                         resultMeta = results.getBytes("metadata");
-                        if (!lookup) {
-                            resultTable = results.getInt("tbl");
-                            hasTbl = true;
-                        }
+                        resultTable = results.getInt("tbl");
+                        hasTbl = true;
                     }
                     else {
                         resultData = results.getInt("data");
@@ -274,11 +281,11 @@ public class Lookup extends Queue {
         return list;
     }
 
-    public static List<String[]> performPartialLookup(Statement statement, CommandSender user, List<String> checkUuids, List<String> checkUsers, List<Object> restrictList, List<Object> excludeList, List<String> excludeUserList, List<Integer> actionList, Location location, Integer[] radius, Long[] rowData, long checkTime, int limitOffset, int limitCount, boolean restrictWorld, boolean lookup) {
+    public static List<String[]> performPartialLookup(Statement statement, CommandSender user, List<String> checkUuids, List<String> checkUsers, List<Object> restrictList, Map<Object, Boolean> excludeList, List<String> excludeUserList, List<Integer> actionList, Location location, Integer[] radius, Long[] rowData, long startTime, long endTime, int limitOffset, int limitCount, boolean restrictWorld, boolean lookup) {
         List<String[]> newList = new ArrayList<>();
 
         try {
-            List<Object[]> lookupList = performLookupRaw(statement, user, checkUuids, checkUsers, restrictList, excludeList, excludeUserList, actionList, location, radius, rowData, checkTime, limitOffset, limitCount, restrictWorld, lookup);
+            List<Object[]> lookupList = performLookupRaw(statement, user, checkUuids, checkUsers, restrictList, excludeList, excludeUserList, actionList, location, radius, rowData, startTime, endTime, limitOffset, limitCount, restrictWorld, lookup);
             newList = convertRawLookup(statement, lookupList);
         }
         catch (Exception e) {
@@ -288,7 +295,7 @@ public class Lookup extends Queue {
         return newList;
     }
 
-    private static ResultSet rawLookupResultSet(Statement statement, CommandSender user, List<String> checkUuids, List<String> checkUsers, List<Object> restrictList, List<Object> excludeList, List<String> excludeUserList, List<Integer> actionList, Location location, Integer[] radius, Long[] rowData, long checkTime, int limitOffset, int limitCount, boolean restrictWorld, boolean lookup, boolean count) {
+    private static ResultSet rawLookupResultSet(Statement statement, CommandSender user, List<String> checkUuids, List<String> checkUsers, List<Object> restrictList, Map<Object, Boolean> excludeList, List<String> excludeUserList, List<Integer> actionList, Location location, Integer[] radius, Long[] rowData, long startTime, long endTime, int limitOffset, int limitCount, boolean restrictWorld, boolean lookup, boolean count) {
         ResultSet results = null;
 
         try {
@@ -304,6 +311,7 @@ public class Lookup extends Queue {
             String queryLimit = "";
             String queryTable = "block";
             String action = "";
+            String actionExclude = "";
             String includeBlock = "";
             String includeEntity = "";
             String excludeBlock = "";
@@ -392,7 +400,7 @@ public class Lookup extends Queue {
                 StringBuilder excludeListMaterial = new StringBuilder();
                 StringBuilder excludeListEntity = new StringBuilder();
 
-                for (Object restrictTarget : excludeList) {
+                for (Object restrictTarget : excludeList.keySet()) {
                     String targetName = "";
 
                     if (restrictTarget instanceof Material) {
@@ -445,6 +453,17 @@ public class Lookup extends Queue {
                 excludeUsers = excludeUserText.toString();
             }
 
+            // Specify actions to exclude from a:item
+            if ((lookup && actionList.size() == 0) || (actionList.contains(11) && actionList.size() == 1)) {
+                StringBuilder actionText = new StringBuilder();
+                actionText = actionText.append(ItemLogger.ITEM_BREAK);
+                actionText.append(",").append(ItemLogger.ITEM_DESTROY);
+                actionText.append(",").append(ItemLogger.ITEM_CREATE);
+                actionText.append(",").append(ItemLogger.ITEM_SELL);
+                actionText.append(",").append(ItemLogger.ITEM_BUY);
+                actionExclude = actionText.toString();
+            }
+
             if (!actionList.isEmpty()) {
                 StringBuilder actionText = new StringBuilder();
                 for (Integer actionTarget : actionList) {
@@ -471,16 +490,25 @@ public class Lookup extends Queue {
                             if (actionTarget == ItemLogger.ITEM_REMOVE) {
                                 actionText.append(",").append(ItemLogger.ITEM_PICKUP);
                                 actionText.append(",").append(ItemLogger.ITEM_REMOVE_ENDER);
+                                actionText.append(",").append(ItemLogger.ITEM_CREATE);
+                                actionText.append(",").append(ItemLogger.ITEM_BUY);
                             }
                             if (actionTarget == ItemLogger.ITEM_ADD) {
                                 actionText.append(",").append(ItemLogger.ITEM_DROP);
                                 actionText.append(",").append(ItemLogger.ITEM_ADD_ENDER);
+                                actionText.append(",").append(ItemLogger.ITEM_THROW);
+                                actionText.append(",").append(ItemLogger.ITEM_SHOOT);
+                                actionText.append(",").append(ItemLogger.ITEM_BREAK);
+                                actionText.append(",").append(ItemLogger.ITEM_DESTROY);
+                                actionText.append(",").append(ItemLogger.ITEM_SELL);
                             }
                         }
                         // If just looking up drops/pickups, include ender chest transactions
                         else if (actionList.contains(11) && !actionList.contains(4)) {
                             if (actionTarget == ItemLogger.ITEM_DROP) {
                                 actionText.append(",").append(ItemLogger.ITEM_ADD_ENDER);
+                                actionText.append(",").append(ItemLogger.ITEM_THROW);
+                                actionText.append(",").append(ItemLogger.ITEM_SHOOT);
                             }
                             if (actionTarget == ItemLogger.ITEM_PICKUP) {
                                 actionText.append(",").append(ItemLogger.ITEM_REMOVE_ENDER);
@@ -531,7 +559,7 @@ public class Lookup extends Queue {
             if (validAction) {
                 queryBlock = queryBlock + " action IN(" + action + ") AND";
             }
-            else if (inventoryQuery || includeBlock.length() > 0 || includeEntity.length() > 0 || excludeBlock.length() > 0 || excludeEntity.length() > 0) {
+            else if (inventoryQuery || actionExclude.length() > 0 || includeBlock.length() > 0 || includeEntity.length() > 0 || excludeBlock.length() > 0 || excludeEntity.length() > 0) {
                 queryBlock = queryBlock + " action NOT IN(-1) AND";
             }
 
@@ -555,8 +583,12 @@ public class Lookup extends Queue {
                 queryBlock = queryBlock + " user NOT IN(" + excludeUsers + ") AND";
             }
 
-            if (checkTime > 0) {
-                queryBlock = queryBlock + " time > '" + checkTime + "' AND";
+            if (startTime > 0) {
+                queryBlock = queryBlock + " time > '" + startTime + "' AND";
+            }
+
+            if (endTime > 0) {
+                queryBlock = queryBlock + " time <= '" + endTime + "' AND";
             }
 
             if (actionList.contains(10)) {
@@ -595,6 +627,9 @@ public class Lookup extends Queue {
             else if (actionList.contains(6) || actionList.contains(7)) {
                 queryTable = "chat";
                 rows = "rowid as id,time,user,message";
+                if (PluginChannelHandshakeListener.getInstance().isPluginChannelPlayer(user)) {
+                    rows += ",wid,x,y,z";
+                }
 
                 if (actionList.contains(7)) {
                     queryTable = "command";
@@ -626,24 +661,17 @@ public class Lookup extends Queue {
 
             String unionSelect = "SELECT * FROM (";
             if (Config.getGlobal().MYSQL) {
-                if (radius == null || users.length() > 0 || includeBlock.length() > 0 || includeEntity.length() > 0) {
-                    // index_mysql = "IGNORE INDEX(wid) ";
-                    if (users.length() > 0) {
-                        // index_mysql = "IGNORE INDEX(wid,type,action) ";
-                    }
-                }
-
                 if (queryTable.equals("block")) {
                     if (includeBlock.length() > 0 || includeEntity.length() > 0) {
-                        index = "USE INDEX(type) ";
+                        index = "USE INDEX(type) IGNORE INDEX(user,wid) ";
                     }
                     if (users.length() > 0) {
-                        index = "USE INDEX(user) ";
+                        index = "USE INDEX(user) IGNORE INDEX(type,wid) ";
                     }
-                    if ((index.equals("") && restrictWorld)) {
-                        index = "USE INDEX(wid) ";
+                    if (radius != null && (radius[2] - radius[1]) <= 50 && (radius[6] - radius[5]) <= 50) {
+                        index = "USE INDEX(wid) IGNORE INDEX(type,user) ";
                     }
-                    if ((radius != null || actionList.size() > 0)) {
+                    if ((restrictWorld && (users.length() > 0 || includeBlock.length() > 0 || includeEntity.length() > 0))) {
                         index = "";
                     }
                 }
@@ -658,10 +686,10 @@ public class Lookup extends Queue {
                     if (users.length() > 0) {
                         index = "INDEXED BY block_user_index ";
                     }
-                    if ((index.equals("") && restrictWorld)) {
+                    if (radius != null && (radius[2] - radius[1]) <= 50 && (radius[6] - radius[5]) <= 50) {
                         index = "INDEXED BY block_index ";
                     }
-                    if ((radius != null || actionList.size() > 0)) {
+                    if ((restrictWorld && (users.length() > 0 || includeBlock.length() > 0 || includeEntity.length() > 0))) {
                         index = "";
                     }
                 }
@@ -704,10 +732,19 @@ public class Lookup extends Queue {
                     rows = "rowid as id,time,user,wid,x,y,z,type,data as metadata,0 as data,amount,action,rolled_back";
                     queryOrder = " ORDER BY time DESC, tbl DESC, id DESC";
                 }
+
+                if (actionExclude.length() > 0) {
+                    queryBlock = queryBlock.replace("action NOT IN(-1)", "action NOT IN(" + actionExclude + ")");
+                }
+
                 query = query + unionSelect + "SELECT " + "'2' as tbl," + rows + " FROM " + ConfigHandler.prefix + "item WHERE" + queryBlock + unionLimit + ")";
             }
 
             if (query.length() == 0) {
+                if (actionExclude.length() > 0) {
+                    baseQuery = baseQuery.replace("action NOT IN(-1)", "action NOT IN(" + actionExclude + ")");
+                }
+
                 query = "SELECT " + "'0' as tbl," + rows + " FROM " + ConfigHandler.prefix + queryTable + " " + index + "WHERE" + baseQuery;
             }
 
@@ -749,7 +786,7 @@ public class Lookup extends Queue {
             int z = block.getZ();
             int time = (int) (System.currentTimeMillis() / 1000L);
             int worldId = Util.getWorldId(block.getWorld().getName());
-            String query = "SELECT user,type FROM " + ConfigHandler.prefix + "block WHERE wid = '" + worldId + "' AND x = '" + x + "' AND z = '" + z + "' AND y = '" + y + "' AND rolled_back IN(0,2) AND action='1' ORDER BY rowid DESC LIMIT 0, 1";
+            String query = "SELECT user,type FROM " + ConfigHandler.prefix + "block " + Util.getWidIndex("block") + "WHERE wid = '" + worldId + "' AND x = '" + x + "' AND z = '" + z + "' AND y = '" + y + "' AND rolled_back IN(0,2) AND action='1' ORDER BY rowid DESC LIMIT 0, 1";
 
             ResultSet results = statement.executeQuery(query);
             while (results.next()) {

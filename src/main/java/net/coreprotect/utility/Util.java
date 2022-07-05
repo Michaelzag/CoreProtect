@@ -19,7 +19,6 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
-import org.bukkit.Art;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -45,6 +44,7 @@ import org.bukkit.inventory.BlockInventoryHolder;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.io.BukkitObjectOutputStream;
@@ -231,6 +231,9 @@ public class Util extends Queue {
     public static String getTimeSince(long resultTime, long currentTime, boolean component) {
         StringBuilder message = new StringBuilder();
         double timeSince = currentTime - (resultTime + 0.00);
+        if (timeSince < 0.00) {
+            timeSince = 0.00;
+        }
 
         // minutes
         timeSince = timeSince / 60;
@@ -625,10 +628,6 @@ public class Util extends Queue {
         return false;
     }
 
-    public static int getArtId(Art art) {
-        return art.getId();
-    }
-
     public static int getArtId(String name, boolean internal) {
         int id = -1;
         name = name.toLowerCase(Locale.ROOT).trim();
@@ -655,6 +654,33 @@ public class Util extends Queue {
             artname = ConfigHandler.artReversed.get(id);
         }
         return artname;
+    }
+
+    public static int setPlayerArmor(PlayerInventory inventory, ItemStack itemStack) {
+        String itemName = itemStack.getType().name();
+        boolean isHelmet = (itemName.endsWith("_HELMET") || itemName.endsWith("_HEAD") || itemName.endsWith("_SKULL") || itemName.endsWith("_PUMPKIN"));
+        boolean isChestplate = (itemName.endsWith("_CHESTPLATE"));
+        boolean isLeggings = (itemName.endsWith("_LEGGINGS"));
+        boolean isBoots = (itemName.endsWith("_BOOTS"));
+
+        if (isHelmet && inventory.getHelmet() == null) {
+            inventory.setHelmet(itemStack);
+            return 3;
+        }
+        else if (isChestplate && inventory.getChestplate() == null) {
+            inventory.setChestplate(itemStack);
+            return 2;
+        }
+        else if (isLeggings && inventory.getLeggings() == null) {
+            inventory.setLeggings(itemStack);
+            return 1;
+        }
+        else if (isBoots && inventory.getBoots() == null) {
+            inventory.setBoots(itemStack);
+            return 0;
+        }
+
+        return -1;
     }
 
     public static ItemStack[] getArmorStandContents(EntityEquipment equipment) {
@@ -801,6 +827,20 @@ public class Util extends Queue {
                 return Material.ITEM_FRAME;
             case ENDER_CRYSTAL:
                 return Material.END_CRYSTAL;
+            case ENDER_PEARL:
+                return Material.ENDER_PEARL;
+            case SPLASH_POTION:
+                return Material.SPLASH_POTION;
+            case THROWN_EXP_BOTTLE:
+                return Material.EXPERIENCE_BOTTLE;
+            case TRIDENT:
+                return Material.TRIDENT;
+            case FIREWORK:
+                return Material.FIREWORK_ROCKET;
+            case EGG:
+                return Material.EGG;
+            case SNOWBALL:
+                return Material.SNOWBALL;
             default:
                 return BukkitAdapter.ADAPTER.getFrameType(type);
         }
@@ -979,7 +1019,7 @@ public class Util extends Queue {
                 if (version.contains("-beta-")) {
                     version = version.split(";")[0];
                     version = version.split("-beta-")[1];
-                    int value = Integer.parseInt(version.replaceAll("[^0-9]", ""));
+                    long value = Long.parseLong(version.replaceAll("[^0-9]", ""));
                     if (value < 6) {
                         validVersion = false;
                     }
@@ -993,7 +1033,7 @@ public class Util extends Queue {
                     }
 
                     if (version.contains("-")) {
-                        int value = Integer.parseInt(((version.split("-"))[0]).replaceAll("[^0-9]", ""));
+                        long value = Long.parseLong(((version.split("-"))[0]).replaceAll("[^0-9]", ""));
                         if (value > 0 && value < 4268) {
                             validVersion = false;
                         }
@@ -1095,6 +1135,35 @@ public class Util extends Queue {
         Chat.sendComponent(consoleSender, Color.RESET + "[CoreProtect] " + string + Chat.COMPONENT_TAG_OPEN + Chat.COMPONENT_POPUP + "| | " + Chat.COMPONENT_TAG_CLOSE);
     }
 
+    // This filter is only used for a:inventory
+    public static Material itemFilter(Material material, boolean blockTable) {
+        if (material == null || (!blockTable && material.isItem())) {
+            return material;
+        }
+
+        switch (material) {
+            case WHEAT:
+                material = Material.WHEAT_SEEDS;
+                break;
+            case PUMPKIN_STEM:
+                material = Material.PUMPKIN_SEEDS;
+                break;
+            case MELON_STEM:
+                material = Material.MELON_SEEDS;
+                break;
+            case BEETROOTS:
+                material = Material.BEETROOT_SEEDS;
+                break;
+            default:
+        }
+
+        if (material.name().contains("WALL_")) {
+            material = Material.valueOf(material.name().replace("WALL_", ""));
+        }
+
+        return material;
+    }
+
     public static String nameFilter(String name, int data) {
         if (name.equals("stone")) {
             switch (data) {
@@ -1127,10 +1196,6 @@ public class Util extends Queue {
 
     public static ItemStack newItemStack(Material type, int amount) {
         return new ItemStack(type, amount);
-    }
-
-    public static ItemStack newItemStack(Material type, int amount, short data) {
-        return new ItemStack(type, amount, data);
     }
 
     public static boolean isSpigot() {
@@ -1321,12 +1386,16 @@ public class Util extends Queue {
     }
 
     public static BlockData createBlockData(Material material) {
-        BlockData result = material.createBlockData();
-        if (result instanceof Waterlogged) {
-            ((Waterlogged) result).setWaterlogged(false);
+        try {
+            BlockData result = material.createBlockData();
+            if (result instanceof Waterlogged) {
+                ((Waterlogged) result).setWaterlogged(false);
+            }
+            return result;
         }
-
-        return result;
+        catch (Exception e) {
+            return null;
+        }
     }
 
     public static void prepareTypeAndData(Map<Block, BlockData> map, Block block, Material type, BlockData blockData, boolean update) {
@@ -1348,7 +1417,9 @@ public class Util extends Queue {
             blockData = createBlockData(type);
         }
 
-        block.setBlockData(blockData, update);
+        if (blockData != null) {
+            block.setBlockData(blockData, update);
+        }
     }
 
     public static boolean successfulQuery(Connection connection, String query) {
@@ -1419,6 +1490,43 @@ public class Util extends Queue {
         }
 
         return result;
+    }
+
+    public static String getWidIndex(String queryTable) {
+        String index = "";
+        boolean isMySQL = Config.getGlobal().MYSQL;
+        if (isMySQL) {
+            index = "USE INDEX(wid) ";
+        }
+        else {
+            switch (queryTable) {
+                case "block":
+                    index = "INDEXED BY block_index ";
+                    break;
+                case "container":
+                    index = "INDEXED BY container_index ";
+                    break;
+                case "item":
+                    index = "INDEXED BY item_index ";
+                    break;
+                case "sign":
+                    index = "INDEXED BY sign_index ";
+                    break;
+                case "chat":
+                    index = "INDEXED BY chat_wid_index ";
+                    break;
+                case "command":
+                    index = "INDEXED BY command_wid_index ";
+                    break;
+                case "session":
+                    index = "INDEXED BY session_index ";
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        return index;
     }
 
     public static int rolledBack(int rolledBack, boolean isInventory) {

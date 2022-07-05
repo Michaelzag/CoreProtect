@@ -145,8 +145,8 @@ public class ContainerLogger extends Queue {
                 logTransaction(preparedStmtContainer, batchCount, player, type, faceData, newInventory, 1, location);
             }
             else { // pass ender chest transactions to item logger
-                ItemLogger.logTransaction(preparedStmtItems, batchCount, player, location, oldInventory, ItemLogger.ITEM_REMOVE_ENDER);
-                ItemLogger.logTransaction(preparedStmtItems, batchCount, player, location, newInventory, ItemLogger.ITEM_ADD_ENDER);
+                ItemLogger.logTransaction(preparedStmtItems, batchCount, 0, player, location, oldInventory, ItemLogger.ITEM_REMOVE_ENDER);
+                ItemLogger.logTransaction(preparedStmtItems, batchCount, 0, player, location, newInventory, ItemLogger.ITEM_ADD_ENDER);
             }
 
             oldList.remove(0);
@@ -182,7 +182,7 @@ public class ContainerLogger extends Queue {
                         int y = location.getBlockY();
                         int z = location.getBlockZ();
                         int typeId = Util.getBlockId(item.getType().name(), true);
-                        int data = item.getDurability();
+                        int data = 0;
                         int amount = item.getAmount();
                         ContainerStatement.insert(preparedStmt, batchCount, time, userId, wid, x, y, z, typeId, data, amount, metadata, action, 0);
                     }

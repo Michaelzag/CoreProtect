@@ -140,6 +140,7 @@ public class Language {
         phrases.put(Phrase.LOOKUP_ITEM, "{0} {picked up|dropped} {1} {2}.");
         phrases.put(Phrase.LOOKUP_LOGIN, "{0} logged {in|out}.");
         phrases.put(Phrase.LOOKUP_PAGE, "Page {0}");
+        phrases.put(Phrase.LOOKUP_PROJECTILE, "{0} {threw|shot} {1} {2}.");
         phrases.put(Phrase.LOOKUP_ROWS_FOUND, "{0} {row|rows} found.");
         phrases.put(Phrase.LOOKUP_SEARCHING, "Lookup searching. Please wait...");
         phrases.put(Phrase.LOOKUP_STORAGE, "{0} {deposited|withdrew} {1} {2}.");
@@ -153,6 +154,8 @@ public class Language {
         phrases.put(Phrase.MISSING_ROLLBACK_RADIUS, "You did not specify a {rollback|restore} radius.");
         phrases.put(Phrase.MISSING_ROLLBACK_USER, "You did not specify a {rollback|restore} user.");
         phrases.put(Phrase.MYSQL_UNAVAILABLE, "Unable to connect to MySQL server.");
+        phrases.put(Phrase.NETWORK_CONNECTION, "Connection by {0} {successful|failed}. Using {1} {2}.");
+        phrases.put(Phrase.NETWORK_TEST, "Network test data has been successful sent.");
         phrases.put(Phrase.NO_DATA, "No data found at {0}.");
         phrases.put(Phrase.NO_DATA_LOCATION, "No {data|transactions|interactions|messages} found at this location.");
         phrases.put(Phrase.NO_PERMISSION, "You do not have permission to do that.");

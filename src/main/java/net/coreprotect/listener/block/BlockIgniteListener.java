@@ -4,6 +4,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Lightable;
@@ -13,10 +14,13 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockIgniteEvent.IgniteCause;
+import org.bukkit.inventory.ItemStack;
 
 import net.coreprotect.bukkit.BukkitAdapter;
 import net.coreprotect.config.Config;
 import net.coreprotect.consumer.Queue;
+import net.coreprotect.database.logger.ItemLogger;
+import net.coreprotect.listener.player.ProjectileLaunchListener;
 import net.coreprotect.model.BlockGroup;
 import net.coreprotect.thread.CacheHandler;
 import net.coreprotect.utility.Util;
@@ -49,6 +53,9 @@ public final class BlockIgniteListener extends Queue implements Listener {
                         }
                     }
                 }
+                else if (event.getCause() == IgniteCause.ENDER_CRYSTAL && blockBelow == Material.AIR) {
+                    return;
+                }
             }
 
             BlockState replacedBlock = null;
@@ -74,9 +81,59 @@ public final class BlockIgniteListener extends Queue implements Listener {
                     }
                 }
 
+                if (blockIgnited == Material.FIRE && event.getCause() == IgniteCause.LAVA && event.getIgnitingBlock() != null) {
+                    boolean burnableBlock = false;
+                    for (BlockFace face : BlockFace.values()) {
+                        Location blockLocation = block.getLocation();
+                        scanLocation.setX(blockLocation.getX());
+                        scanLocation.setY(blockLocation.getY());
+                        scanLocation.setZ(blockLocation.getZ());
+
+                        switch (face) {
+                            case NORTH:
+                                scanLocation.setZ(scanLocation.getZ() - 1);
+                                break;
+                            case SOUTH:
+                                scanLocation.setZ(scanLocation.getZ() + 1);
+                                break;
+                            case WEST:
+                                scanLocation.setX(scanLocation.getX() - 1);
+                                break;
+                            case EAST:
+                                scanLocation.setX(scanLocation.getX() + 1);
+                                break;
+                            case DOWN:
+                                scanLocation.setY(scanLocation.getY() - 1);
+                                break;
+                            case UP:
+                                scanLocation.setY(scanLocation.getY() + 1);
+                                break;
+                            default:
+                                continue;
+                        }
+
+                        if (scanLocation.getY() < BukkitAdapter.ADAPTER.getMinHeight(world) || scanLocation.getY() >= world.getMaxHeight()) {
+                            continue;
+                        }
+
+                        if (scanLocation.getBlock().getType().isBurnable()) {
+                            burnableBlock = true;
+                            break;
+                        }
+                    }
+
+                    if (!burnableBlock) {
+                        return;
+                    }
+                }
+
                 Queue.queueBlockPlace("#fire", block.getState(), block.getType(), replacedBlock, blockIgnited, -1, 0, forceBlockData.getAsString());
             }
             else {
+                if (event.getCause() == IgniteCause.FIREBALL) {
+                    ProjectileLaunchListener.playerLaunchProjectile(event.getPlayer().getLocation(), event.getPlayer().getName(), new ItemStack(Material.FIRE_CHARGE), 1, -1, 1, ItemLogger.ITEM_THROW);
+                }
+
                 Player player = event.getPlayer();
                 Queue.queueBlockPlace(player.getName(), block.getState(), block.getType(), replacedBlock, blockIgnited, -1, 0, forceBlockData.getAsString());
                 int unixtimestamp = (int) (System.currentTimeMillis() / 1000L);

@@ -15,6 +15,8 @@ import net.coreprotect.listener.block.BlockIgniteListener;
 import net.coreprotect.listener.block.BlockPistonListener;
 import net.coreprotect.listener.block.BlockPlaceListener;
 import net.coreprotect.listener.block.BlockSpreadListener;
+import net.coreprotect.listener.channel.PluginChannelHandshakeListener;
+import net.coreprotect.listener.channel.PluginChannelListener;
 import net.coreprotect.listener.entity.CreatureSpawnListener;
 import net.coreprotect.listener.entity.EntityBlockFormListener;
 import net.coreprotect.listener.entity.EntityChangeBlockListener;
@@ -28,8 +30,10 @@ import net.coreprotect.listener.entity.HangingBreakByEntityListener;
 import net.coreprotect.listener.entity.HangingBreakListener;
 import net.coreprotect.listener.entity.HangingPlaceListener;
 import net.coreprotect.listener.player.ArmorStandManipulateListener;
+import net.coreprotect.listener.player.CraftItemListener;
 import net.coreprotect.listener.player.FoodLevelChangeListener;
 import net.coreprotect.listener.player.InventoryChangeListener;
+import net.coreprotect.listener.player.InventoryClickListener;
 import net.coreprotect.listener.player.PlayerBucketEmptyListener;
 import net.coreprotect.listener.player.PlayerBucketFillListener;
 import net.coreprotect.listener.player.PlayerChatListener;
@@ -38,10 +42,13 @@ import net.coreprotect.listener.player.PlayerDeathListener;
 import net.coreprotect.listener.player.PlayerDropItemListener;
 import net.coreprotect.listener.player.PlayerInteractEntityListener;
 import net.coreprotect.listener.player.PlayerInteractListener;
+import net.coreprotect.listener.player.PlayerItemBreakListener;
 import net.coreprotect.listener.player.PlayerJoinListener;
 import net.coreprotect.listener.player.PlayerQuitListener;
 import net.coreprotect.listener.player.PlayerTakeLecternBookListener;
+import net.coreprotect.listener.player.ProjectileLaunchListener;
 import net.coreprotect.listener.player.SignChangeListener;
+import net.coreprotect.listener.world.ChunkPopulateListener;
 import net.coreprotect.listener.world.LeavesDecayListener;
 import net.coreprotect.listener.world.PortalCreateListener;
 import net.coreprotect.listener.world.StructureGrowListener;
@@ -82,25 +89,31 @@ public final class ListenerHandler {
         pluginManager.registerEvents(new HangingBreakByEntityListener(), plugin);
 
         // Player Listeners
-        pluginManager.registerEvents(new InventoryChangeListener(), plugin);
         pluginManager.registerEvents(new ArmorStandManipulateListener(), plugin);
+        pluginManager.registerEvents(new CraftItemListener(), plugin);
+        pluginManager.registerEvents(new FoodLevelChangeListener(), plugin);
+        pluginManager.registerEvents(new InventoryChangeListener(), plugin);
+        pluginManager.registerEvents(new InventoryClickListener(), plugin);
         pluginManager.registerEvents(new PlayerBucketEmptyListener(), plugin);
         pluginManager.registerEvents(new PlayerBucketFillListener(), plugin);
         pluginManager.registerEvents(new PlayerCommandListener(), plugin);
         pluginManager.registerEvents(new PlayerDeathListener(), plugin);
         pluginManager.registerEvents(new PlayerDropItemListener(), plugin);
-        pluginManager.registerEvents(new FoodLevelChangeListener(), plugin);
+        pluginManager.registerEvents(new PlayerPickupArrowListener(), plugin);
         pluginManager.registerEvents(new PlayerInteractEntityListener(), plugin);
+        pluginManager.registerEvents(new PlayerInteractListener(), plugin);
+        pluginManager.registerEvents(new PlayerItemBreakListener(), plugin);
         pluginManager.registerEvents(new PlayerJoinListener(), plugin);
         pluginManager.registerEvents(new PlayerQuitListener(), plugin);
         pluginManager.registerEvents(new SignChangeListener(), plugin);
-        pluginManager.registerEvents(new PlayerInteractListener(), plugin);
         pluginManager.registerEvents(new PlayerTakeLecternBookListener(), plugin);
+        pluginManager.registerEvents(new ProjectileLaunchListener(), plugin);
 
         // World Listeners
-        pluginManager.registerEvents(new StructureGrowListener(), plugin);
+        pluginManager.registerEvents(new ChunkPopulateListener(), plugin);
         pluginManager.registerEvents(new LeavesDecayListener(), plugin);
         pluginManager.registerEvents(new PortalCreateListener(), plugin);
+        pluginManager.registerEvents(new StructureGrowListener(), plugin);
 
         // Paper Listeners / Fallbacks
         try {
@@ -111,6 +124,20 @@ public final class ListenerHandler {
             pluginManager.registerEvents(new PlayerChatListener(), plugin);
         }
 
+        // Plugin channel events
+        pluginManager.registerEvents(new PluginChannelListener(), plugin);
+    }
+
+    public static void registerNetworking() {
+        CoreProtect.getInstance().getServer().getMessenger().registerIncomingPluginChannel(CoreProtect.getInstance(), PluginChannelHandshakeListener.pluginChannel, new PluginChannelHandshakeListener());
+        CoreProtect.getInstance().getServer().getMessenger().registerOutgoingPluginChannel(CoreProtect.getInstance(), PluginChannelHandshakeListener.pluginChannel);
+        CoreProtect.getInstance().getServer().getMessenger().registerOutgoingPluginChannel(CoreProtect.getInstance(), PluginChannelListener.pluginChannel);
+    }
+
+    public static void unregisterNetworking() {
+        CoreProtect.getInstance().getServer().getMessenger().unregisterIncomingPluginChannel(CoreProtect.getInstance(), PluginChannelHandshakeListener.pluginChannel);
+        CoreProtect.getInstance().getServer().getMessenger().unregisterOutgoingPluginChannel(CoreProtect.getInstance(), PluginChannelHandshakeListener.pluginChannel);
+        CoreProtect.getInstance().getServer().getMessenger().unregisterOutgoingPluginChannel(CoreProtect.getInstance(), PluginChannelListener.pluginChannel);
     }
 
 }

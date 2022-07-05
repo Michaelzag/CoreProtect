@@ -73,8 +73,10 @@ public class Process {
                 return;
             }
 
-            Consumer.isPaused = true;
             Statement statement = connection.createStatement();
+            Database.performCheckpoint(statement);
+
+            Consumer.isPaused = true;
             ArrayList<Object[]> consumerData = Consumer.consumer.get(processId);
             Map<Integer, String[]> users = Consumer.consumerUsers.get(processId);
             Map<Integer, Object> consumerObject = Consumer.consumerObjects.get(processId);
@@ -150,7 +152,7 @@ public class Process {
                                     ContainerTransactionProcess.process(preparedStmtContainers, preparedStmtItems, i, processId, id, blockType, forceData, user, object);
                                     break;
                                 case Process.ITEM_TRANSACTION:
-                                    ItemTransactionProcess.process(preparedStmtItems, i, processId, id, forceData, replaceData, user, object);
+                                    ItemTransactionProcess.process(preparedStmtItems, i, processId, id, forceData, replaceData, blockData, user, object);
                                     break;
                                 case Process.STRUCTURE_GROWTH:
                                     StructureGrowthProcess.process(statement, preparedStmtBlocks, i, processId, id, user, object, forceData);
